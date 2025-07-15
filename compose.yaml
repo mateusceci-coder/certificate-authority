@@ -1,0 +1,77 @@
+services:
+  postgres:
+    image: "postgres:latest"
+    environment:
+      - "POSTGRES_DB=fake-bry"
+      - "POSTGRES_PASSWORD=password"
+      - "POSTGRES_USER=fake-bry"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  certificates:
+    build: ./certs
+    volumes:
+      - certs:/certs
+    container_name: cert-generator
+    networks:
+      - app-network
+
+  springboot:
+    build: ./app
+    depends_on:
+      - postgres
+    volumes:
+      - certs:/certs
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  front:
+    build:
+      context: ./front
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    environment:
+      NODE_ENV: development
+    volumes:
+      # Mount source code for hot reload
+      - ./front:/app
+      # Exclude node_modules from being overwritten
+      - /app/node_modules
+    depends_on:
+      - springboot
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  nginx:
+    build: ./nginx
+    depends_on:
+      - springboot
+      - front
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - certs:/certs:ro
+    restart: unless-stopped
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  certs:
+  postgres_data:
