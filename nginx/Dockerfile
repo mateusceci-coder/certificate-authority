@@ -1,10 +1,10 @@
 FROM node:20-alpine AS builder
 
-WORKDIR /app
+WORKDIR /front
 
 # Install deps first to leverage cache
 COPY front/package*.json ./
-RUN npm ci --only=production
+RUN npm ci
 
 # Build frontend
 COPY front/ .
@@ -16,7 +16,7 @@ FROM nginx:alpine
 COPY nginx/nginx.conf /etc/nginx/nginx.conf
 
 # Copy built static assets
-COPY --from=builder /app/build/client /usr/share/nginx/html
+COPY --from=builder /front/build/client /usr/share/nginx/html
 
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]

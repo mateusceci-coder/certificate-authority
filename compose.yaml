@@ -1,10 +1,10 @@
 services:
   postgres:
-    image: "postgres:latest"
+    image: "postgres:17.6"
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-fake-bry}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
-      POSTGRES_DB: ${POSTGRES_DB:-fake-bry}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
@@ -16,7 +16,7 @@ services:
           "CMD-SHELL",
           "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB} -h localhost",
         ]
-      interval: 10s
+      interval: 30s
       timeout: 5s
       retries: 5
 
@@ -43,7 +43,7 @@ services:
           "CMD-SHELL",
           "wget -qO- http://localhost:8080/api/ca-info | grep -q 'success' || exit 1",
         ]
-      interval: 10s
+      interval: 30s
       timeout: 5s
       retries: 10
 
@@ -66,7 +66,7 @@ services:
           "CMD-SHELL",
           "wget -qO- http://localhost/ | grep -q '<!DOCTYPE html>' || exit 1",
         ]
-      interval: 10s
+      interval: 30s
       timeout: 5s
       retries: 5
 

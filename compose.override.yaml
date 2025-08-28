@@ -14,18 +14,20 @@ services:
     ports:
       - "5173:5173"
     volumes:
-      - ./front:/app
-      - /app/node_modules
+      - ./front:/front
+      - /front/node_modules
     depends_on:
       - springboot
     networks:
       - app-network
 
   nginx:
-    build:
-      context: ./nginx
-      dockerfile: Dockerfile
+    image: nginx:alpine
     depends_on:
       - front
     volumes:
       - ./nginx/nginx.dev.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "80:80"
+    networks:
+      - app-network
