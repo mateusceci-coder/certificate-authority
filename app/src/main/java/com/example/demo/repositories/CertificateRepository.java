@@ -9,8 +9,8 @@ import com.example.demo.entities.Certificate;
 
 @Repository
 public interface CertificateRepository extends JpaRepository<Certificate, Long> {
-    
-    Optional<Certificate> findBySerialNumber(String serialNumber);
-    
-    boolean existsBySerialNumber(String serialNumber);  
+
+    Certificate findBySerialNumber(String serialNumber);
+
+    boolean existsBySerialNumber(String serialNumber);
 } 

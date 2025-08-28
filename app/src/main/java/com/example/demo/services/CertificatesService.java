@@ -4,6 +4,7 @@ import java.io.FileInputStream;
 import java.io.StringReader;
 import java.io.StringWriter;
 import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
 import java.security.KeyFactory;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -22,6 +23,7 @@ import java.util.HexFormat;
 import java.util.Map;
 import java.util.Optional;
 
+import com.example.demo.DTOs.CaCertificateInfoDTO;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo;
 import org.bouncycastle.cert.X509CertificateHolder;
@@ -44,34 +46,37 @@ import com.example.demo.requests.SignatureValidationRequest;
 
 @Service
 public class CertificatesService {
-    
+
     @Autowired
     private CertificateRepository certificateRepository;
 
-    /**
-     * Retrieves a certificate by its serial number
-     * @param serialNumber the serial number to search for
-     * @return Optional containing the certificate if found, empty otherwise
-     */
-    public Optional<Certificate> getCertificateBySerialNumber(String serialNumber) {
-        Optional<Certificate> certificate = certificateRepository.findBySerialNumber(serialNumber);
-        if (certificate.isEmpty()) {
+
+    public Certificate getCertificateBySerialNumber(String serialNumber) {
+        Certificate certificate = certificateRepository.findBySerialNumber(serialNumber);
+        if (certificate == null) {
             throw new CertificateNotFoundException("Certificate not found");
         }
         return certificate;
     }
 
-    /**
-     * Saves a certificate to the database
-     * @param certificate the certificate to save
-     * @return the saved certificate
-     */
-    public Certificate saveCertificate(Certificate certificate) {
-        return certificateRepository.save(certificate);
-    }
+    //    public Certificate saveCertificate(Certificate certificate) {
+    //        return certificateRepository.save(certificate);
+    //    }
 
-    public X509Certificate getCaCertificate() {
-        return loadCACertificate();
+    public CaCertificateInfoDTO getCaCertificate() {
+        X509Certificate caCertificateInfo = loadCACertificate();
+
+        String issuerDN = caCertificateInfo.getIssuerX500Principal().getName();
+        String cn = issuerDN.replaceAll(".*CN=([^,]+).*", "$1");
+
+        CaCertificateInfoDTO caCertificateInfoDTO = new CaCertificateInfoDTO(
+                cn,
+                caCertificateInfo.getSerialNumber(),
+                caCertificateInfo.getNotBefore(),
+                caCertificateInfo.getNotAfter(),
+                caCertificateInfo.getSigAlgName()
+        );
+        return caCertificateInfoDTO;
     }
 
     public String issueCertificate(String csrPem) {
@@ -80,7 +85,7 @@ public class CertificatesService {
         X509Certificate x509Certificate = generateX509Certificate(csr);
 
         String signedCertificate = signX509Certificate(x509Certificate);
-        
+
         saveCertificateToDatabase(x509Certificate, signedCertificate);
 
         return signedCertificate;
@@ -88,7 +93,7 @@ public class CertificatesService {
 
     public Map<String, Object> validateSignature(SignatureValidationRequest request) {
         X509Certificate clientCertificate = parseCertificateFromPem(request.getCertificatePem());
-            
+
         boolean isCertificateValid = verifyCertificateChain(clientCertificate);
 
         if (!isCertificateValid) {
@@ -98,11 +103,11 @@ public class CertificatesService {
             return certificateValidation;
         }
 
-        
+
         boolean isSignatureValid = verifySignature(
-            request.getData(), 
-            request.getSignature(), 
-            clientCertificate.getPublicKey()
+                request.getData(),
+                request.getSignature(),
+                clientCertificate.getPublicKey()
         );
 
         if (!isSignatureValid) {
@@ -121,7 +126,7 @@ public class CertificatesService {
     private PKCS10CertificationRequest parseCsrPem(String csrPem) {
         try (PEMParser pemParser = new PEMParser(new StringReader(csrPem))) {
             Object parsedObject = pemParser.readObject();
-            if(parsedObject instanceof PKCS10CertificationRequest csr) {
+            if (parsedObject instanceof PKCS10CertificationRequest csr) {
                 return csr;
             } else {
                 throw new IllegalArgumentException("Invalid CSR format");
@@ -146,14 +151,14 @@ public class CertificatesService {
         try {
             try (FileInputStream fis = new FileInputStream("/certs/rootCA.key");
                  PemReader pemReader = new PemReader(new java.io.InputStreamReader(fis))) {
-                
+
                 PemObject pemObject = pemReader.readPemObject();
                 byte[] keyBytes = pemObject.getContent();
-                
+
                 PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(keyBytes);
                 KeyFactory keyFactory = KeyFactory.getInstance("RSA");
                 return keyFactory.generatePrivate(keySpec);
-            }   
+            }
         } catch (Exception e) {
             throw new RuntimeException("Failed to load CA private key: " + e.getMessage(), e);
         }
@@ -167,29 +172,29 @@ public class CertificatesService {
             X500Name subject = csr.getCertificationRequestInfo().getSubject();
 
             SubjectPublicKeyInfo publicKeyInfo = csr.getCertificationRequestInfo().getSubjectPublicKeyInfo();
-            
+
             BigInteger serialNumber = generateUniqueSerialNumber();
             Date notBefore = new Date();
-            Date notAfter = new Date(notBefore.getTime() + 365 * 24 * 60 * 60 * 1000L); 
-            
+            Date notAfter = new Date(notBefore.getTime() + 365 * 24 * 60 * 60 * 1000L);
+
             X500Name issuer = new X500Name(caCertificate.getSubjectX500Principal().getName());
             X509v3CertificateBuilder certificateBuilder = new X509v3CertificateBuilder(
-                issuer, 
-                serialNumber,
-                notBefore,
-                notAfter,
-                subject, 
-                publicKeyInfo 
+                    issuer,
+                    serialNumber,
+                    notBefore,
+                    notAfter,
+                    subject,
+                    publicKeyInfo
             );
-            
+
             ContentSigner contentSigner = new JcaContentSignerBuilder("SHA256WithRSA")
-                .build(caPrivateKey);
-            
+                    .build(caPrivateKey);
+
             X509CertificateHolder certificateHolder = certificateBuilder.build(contentSigner);
-            
+
             JcaX509CertificateConverter certificateConverter = new JcaX509CertificateConverter();
             return certificateConverter.getCertificate(certificateHolder);
-            
+
         } catch (Exception e) {
             throw new RuntimeException("Failed to generate certificate: " + e.getMessage(), e);
         }
@@ -213,9 +218,9 @@ public class CertificatesService {
     private void saveCertificateToDatabase(X509Certificate x509Certificate, String certificatePem) {
         try {
             Certificate certificate = new Certificate();
-            
+
             byte[] certificateDer = x509Certificate.getEncoded();
-            
+
             // Set basic certificate information
             certificate.setVersion(x509Certificate.getVersion());
             certificate.setSerialNumber(x509Certificate.getSerialNumber().toString());
@@ -230,20 +235,20 @@ public class CertificatesService {
             certificate.setSignatureAlgorithm(x509Certificate.getSigAlgName());
             certificate.setPublicKeyAlgorithm(x509Certificate.getPublicKey().getAlgorithm());
             certificate.setCertificateBlob(certificateDer);
-            
+
             certificate.setNotBefore(x509Certificate.getNotBefore().toInstant()
-                .atZone(ZoneId.systemDefault()).toLocalDateTime());
+                    .atZone(ZoneId.systemDefault()).toLocalDateTime());
             certificate.setNotAfter(x509Certificate.getNotAfter().toInstant()
-                .atZone(ZoneId.systemDefault()).toLocalDateTime());
-            
+                    .atZone(ZoneId.systemDefault()).toLocalDateTime());
+
             saveCertificate(certificate);
-            
+
         } catch (Exception e) {
             throw new RuntimeException("Failed to save certificate to database: " + e.getMessage(), e);
         }
     }
 
-       /**
+    /**
      * Parses an X.509 certificate from PEM format string
      */
     private X509Certificate parseCertificateFromPem(String certificatePem) {
@@ -265,13 +270,13 @@ public class CertificatesService {
     private boolean verifyCertificateChain(X509Certificate certificate) {
         try {
             X509Certificate caCertificate = loadCACertificate();
-            
+
             certificate.verify(caCertificate.getPublicKey());
-            
+
             certificate.checkValidity();
-            
+
             return certificate.getIssuerX500Principal().equals(caCertificate.getSubjectX500Principal());
-            
+
         } catch (Exception e) {
             return false;
         }
@@ -284,11 +289,11 @@ public class CertificatesService {
         try {
             Signature signature = Signature.getInstance("SHA256withRSA");
             signature.initVerify(publicKey);
-            signature.update(data.getBytes("UTF-8"));
-            
+            signature.update(data.getBytes(StandardCharsets.UTF_8));
+
             byte[] signatureBytes = Base64.getDecoder().decode(signatureBase64);
             return signature.verify(signatureBytes);
-            
+
         } catch (Exception e) {
             return false;
         }
@@ -301,26 +306,26 @@ public class CertificatesService {
     }
 
 
-
-        /**
+    /**
      * Generates a cryptographically secure unique serial number for X.509 certificates.
      * Uses SecureRandom to ensure uniqueness and security.
+     *
      * @return A positive BigInteger serial number
      */
     private BigInteger generateUniqueSerialNumber() {
         SecureRandom secureRandom = new SecureRandom();
-        
+
         byte[] serialBytes = new byte[8];
         secureRandom.nextBytes(serialBytes);
-        
+
         serialBytes[0] &= 0x7F;
-        
+
         BigInteger serialNumber = new BigInteger(1, serialBytes);
-        
+
         if (serialNumber.equals(BigInteger.ZERO)) {
             serialNumber = BigInteger.ONE;
         }
-        
+
         return serialNumber;
     }
 }
